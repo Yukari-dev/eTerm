@@ -1,75 +1,89 @@
-#include <stdio.h>
-#include <string.h>
-#include <strings.h>
-#include <unistd.h>
-#include <sys/wait.h>
-#include <stdbool.h>
-
-void ls_command(void);
-void cd_command(char *path);
-void input_usr(void);
+#include "shell.h"
 
 int main(void) {
-    printf("welcome to  shell :3  \n");
-    input_usr();
+    InitWindow(600, 400, "shell");
+    SetTargetFPS(30);
+
+    char input[100] = "";
+    int length = 0;
+    char output[MAX_OUTPUT][100] = { "" };
+    int output_count = 0;
+
+    while (!WindowShouldClose()) {
+        int key = GetCharPressed();
+        while (key > 0) {
+            if (length < 99) {
+                input[length] = (char)key;
+                length++;
+                input[length] = '\0';
+            }
+            key = GetCharPressed();
+        }
+
+        if (IsKeyPressed(KEY_BACKSPACE) && length > 0) {
+            length--;
+            input[length] = '\0';
+        }
+
+        if (IsKeyPressed(KEY_ENTER) && length > 0) {
+            if (strcasecmp(input, "exit") == 0 || strcasecmp(input, "q") == 0) {
+                break;
+            }
+            run_command(input, output, &output_count);
+            input[0] = '\0';
+            length = 0;
+        }
+
+        BeginDrawing();
+        ClearBackground(BLACK);
+
+        DrawText("Welcome to shell :3", 20, 10, 20, WHITE);
+        DrawText(TextFormat(":> %s_", input), 20, 40, 20, GREEN);
+
+        for (int i = 0; i < output_count; i++) {
+            DrawText(output[i], 20, 80 + i * 20, 16, LIGHTGRAY);
+        }
+
+        EndDrawing();
+    }
+
+    CloseWindow();
     return 0;
 }
 
-void input_usr(void) {
-    while (true) {
-        printf(":> ");
+void run_command(const char *cmd, char output[MAX_OUTPUT][100], int *count) {
+    char copy[100];
+    strcpy(copy, cmd);
 
-        char command[100];
-        fgets(command, sizeof(command), stdin);
+    char *first_word  = strtok(copy, " ");
+    char *second_word = strtok(NULL, " ");
 
-        command[strcspn(command, "\n")] = '\0';
+    if (first_word == NULL) return;
 
-        char *first_word  = strtok(command, " ");
-        char *second_word = strtok(NULL, " ");
-
-        if (first_word == NULL) {
-            continue;
-        }
-
-        if (strcasecmp(first_word, "ls") == 0) {
-            ls_command();
-        }
-        else if (strcasecmp(first_word, "cd") == 0) {
-            cd_command(second_word);
-        }
-        else if (strcasecmp(first_word, "exit") == 0 || 
-                 strcasecmp(first_word, "q") == 0) {
-            printf("goodbye :3\n");
-            break;
-        }
-        else {
-            printf("unknown command: %s\n", first_word);
+    if (strcasecmp(first_word, "ls") == 0) {
+        FILE *fp = popen("ls", "r");
+        if (fp) {
+            *count = 0;
+            while (fgets(output[*count], 100, fp) && *count < MAX_OUTPUT) {
+                output[*count][strcspn(output[*count], "\n")] = '\0';
+                (*count)++;
+            }
+            pclose(fp);
         }
     }
-}
-
-void ls_command(void) {
-    pid_t pid = fork();
-
-    if (pid == 0) {
-        execlp("ls", "ls", NULL);
-        perror("ls");
-        _exit(1);
+    else if (strcasecmp(first_word, "cd") == 0) {
+        if (second_word && chdir(second_word) == 0) {
+            strcpy(output[0], "directory changed");
+        } else {
+            strcpy(output[0], "cd: failed");
+        }
+        *count = 1;
     }
-    else if (pid > 0) {
-        waitpid(pid, NULL, 0);
+    else if (strcasecmp(first_word, "clear") == 0) {
+        *count = 0;
     }
     else {
-        perror("fork");
-    }
-}
-
-void cd_command(char *path) {
-    if (path == NULL) {
-        printf("cd: where do you want to go?\n");
-        return;
-    }
-    if (chdir(path) != 0) {
-        perror("cd");
+        snprintf(output[0], 100, "unknown: %s", first_word);
+        *count = 1;
     }
 }
